@@ -1,8 +1,11 @@
-# /usr/bin/python2.7
 import psycopg2
 from configparser import ConfigParser
 from flask import Flask, request, render_template, g, abort
 import time
+import redis
+import json
+rcache = redis.Redis(host='cloudguru-redis.hrqbsr.0001.use2.cache.amazonaws.com', port=6379, db=0, password=None)
+TTL=10
 
 def config(filename='config/database.ini', section='postgresql'):
     # create a parser
@@ -21,24 +24,34 @@ def config(filename='config/database.ini', section='postgresql'):
 
     return db
 
+
 def fetch(sql):
     # connect to database listed in database.ini
-    conn = connect()
-    if(conn != None):
+    res = rcache.get(sql)
+    if res:
+        return json.loads(res)
+    res = dbfetch(sql)
+    rcache.setex(sql, TTL, json.dumps(res))
+    return res
+
+def dbfetch(sql):
+    conn=connect()
+    if(conn !=None):
         cur = conn.cursor()
         cur.execute(sql)
-        
+            
         # fetch one row
         retval = cur.fetchone()
-        
+   
         # close db connection
-        cur.close() 
+        cur.close()
         conn.close()
         print("PostgreSQL connection is now closed")
-
         return retval
-    else:
-        return None    
+    else: 
+        return None
+
+
 
 def connect():
     """ Connect to the PostgreSQL database server and return a cursor """
